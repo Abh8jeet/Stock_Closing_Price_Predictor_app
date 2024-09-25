@@ -39,4 +39,4 @@ Contact
 For any inquiries, feel free to reach out:
 
 Email: abhijeet2001pawar@gmail.com
-GitHub: Abh8jeet
+GitHub: https://github.com/Abh8jeet
