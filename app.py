@@ -2,6 +2,7 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 from yahooquery import search
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras.models import Sequential
@@ -53,33 +54,53 @@ def predict_closing_price(model, scaler, ticker, seq_length):
     predicted_price = scaler.inverse_transform([[0, 0, 0, predicted_price[0, 0], 0]])
     return predicted_price[0, 3]
 
+# Function to fetch important stock info and financial metrics
+def get_stock_info_and_financials(ticker):
+    stock = yf.Ticker(ticker)
+
+    # Extract general stock info (important fields only)
+    info = stock.info
+    important_info_keys = [
+        "previousClose", "open", "dayLow", "dayHigh", "volume", "averageVolume",
+        "fiftyTwoWeekLow", "fiftyTwoWeekHigh", "marketCap", "trailingPE",
+        "priceToBook", "profitMargins", "bookValue", "totalRevenue", "totalDebt",
+        "revenueGrowth", "operatingMargins", "grossMargins", "earningsGrowth", "recommendationKey"
+    ]
+    
+    important_info = {key: info.get(key, '-') for key in important_info_keys}
+
+    # Extract historical market data (closing prices for the last 3 months)
+    hist = stock.history(period="3mo")['Close']
+
+    # Extract essential financial metrics (summarized)
+    financials = stock.financials.T  # Transpose for easier viewing
+    balance_sheet = stock.balance_sheet.T
+
+    # Adjust important financials keys based on available metrics
+    important_financials_keys = [
+        'Total Revenue', 'Gross Profit', 'Operating Income', 
+        'Net Income', 'Total Assets', 'Total Liabilities'
+    ]
+
+    # Combine financials and balance sheet to filter out important metrics
+    combined_financials = financials.join(balance_sheet, how='outer')
+
+    # Check for available financial metrics and filter the financials DataFrame
+    available_financials_keys = [key for key in important_financials_keys if key in combined_financials.columns]
+    important_financials = combined_financials[available_financials_keys].fillna('-')
+
+    return important_info, hist, important_financials
+
 # Main app function
 def main():
-    # Add CSS to set a background image
-    st.markdown(
-        """
-        <style>
-        .reportview-container {
-            background: url("C:\\Users\\Admin\\OneDrive\\Desktop\\app\\th.jpg);
-            background-size: cover;
-            background-position: center;
-            background-repeat: no-repeat;
-            height: 100vh;
-            color: white;  /* Optional: Change text color to make it visible on the background */
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-
-    st.title("Stock Price Prediction App")
+    st.title("Stock Information and Prediction App")
     
-    # Input fields for stock name and symbol
+    # Input for stock name/symbol
     stock_name = st.text_input("Enter the stock name (e.g., 'HDFC Bank', 'Reliance Industries')", "")
     stock_symbol = st.text_input("Or enter the stock symbol (if known)", "")
     start_date = st.date_input("Start date", value=datetime(2020, 1, 1))
-    prediction_date = st.date_input("Prediction date", value=datetime(2024, 8, 12))
-    
+    prediction_date = st.date_input("Prediction date", value=datetime.today())
+
     # Determine if the stock symbol is provided or needs to be fetched by name
     if stock_symbol:
         ticker = stock_symbol
@@ -92,16 +113,15 @@ def main():
             st.write(f"The ticker symbol for {stock_name} is: {ticker}")
         else:
             st.write(f"No ticker symbol found for '{stock_name}'")
-            return  # Exit if no symbol is found and none is provided
+            return
     else:
         st.write("Please enter either a stock name or symbol.")
         return
-    
-    if st.button("Predict Stock Price"):
+
+    if st.button("Get Stock Info and Predict Price"):
         try:
-            # Download data
             st.write("Downloading historical data...")
-            data = download_data(ticker, start_date, prediction_date)  # End date set to prediction date
+            data = download_data(ticker, start_date, prediction_date)
             data = data[['Open', 'High', 'Low', 'Close', 'Volume']]
             
             # Prepare data and train model
@@ -115,6 +135,30 @@ def main():
             last_closing_price = data['Close'][-1:].values[0]
             st.write(f"Predicted Closing Price on {prediction_date}: {predicted_price:.2f}")
             st.write(f"Last Known Closing Price: {last_closing_price:.2f}")
+
+            # Get stock info and financials
+            important_info, hist, important_financials = get_stock_info_and_financials(ticker)
+
+            # Display important stock info
+            st.subheader("Important Stock Information")
+            st.write(important_info)
+
+            # Plot historical closing prices
+            st.subheader(f"Historical Closing Prices of {ticker} (Last 3 Months)")
+            plt.figure(figsize=(10, 5))
+            plt.plot(hist.index, hist.values, marker='o', linestyle='-')
+            plt.title(f'Historical Closing Prices of {ticker} (Last 3 Months)')
+            plt.xlabel('Date')
+            plt.ylabel('Closing Price')
+            plt.grid()
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(plt)
+
+            # Display important financial metrics
+            st.subheader("Important Financial Metrics")
+            st.write(important_financials)
+
         except Exception as e:
             st.error(f"An error occurred: {e}")
 
